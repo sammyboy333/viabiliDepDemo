@@ -193,12 +193,10 @@ if clicked:
         status_box.info(f"📊 Procesando tarea (ID: {task_id})...")
         with st.spinner("⏳ Procesando, por favor espera..."):
             retry_attempts = 5  # Number of retries for task status
+            not_found_retries = 3  # Specific retries for "no encontrado" status
             while True:
                 try:
                     task_status_response = requests.get(f"{CLOUD_RUN_URL}/task-status/{task_id}", headers=headers)
-                    
-                    # Debug: Show response status and content
-                    st.info(f"🔍 Estado de respuesta: {task_status_response.status_code}")
                     
                     if task_status_response.status_code != 200:
                         status_box.error(f"❌ Error al consultar estado de tarea. Código HTTP: {task_status_response.status_code}")
@@ -207,9 +205,6 @@ if clicked:
                     
                     task_status = task_status_response.json()
                     current_status = task_status.get("status", "unknown")
-                    
-                    # Debug: Show full task status response
-                    st.info(f"🔍 Respuesta completa del estado: {task_status}")
                     
                     if current_status.lower() == "completado":
                         spreadsheet_url = task_status.get("spreadsheet_url")
@@ -240,20 +235,25 @@ if clicked:
                         st.session_state.last_status = f"❌ Tarea fallida: {current_status}"
                         break
                     elif current_status.lower() == "no encontrado" or "no encontrado" in current_status.lower():
-                        status_box.error(f"❌ {current_status} - La tarea no fue encontrada en el servidor.")
-                        st.session_state.last_status = f"❌ {current_status} - La tarea no fue encontrada en el servidor."
-                        break
+                        if not_found_retries > 0:
+                            not_found_retries -= 1
+                            status_box.warning(f"⚠️ {current_status} - Reintentando en 5 segundos... ({not_found_retries} intentos restantes)")
+                            st.session_state.last_status = f"⚠️ {current_status} - Reintentando..."
+                            time.sleep(5)  # Wait 5 seconds before retrying
+                            continue
+                        else:
+                            status_box.error(f"❌ {current_status} - La tarea no fue encontrada en el servidor después de 3 intentos.")
+                            st.session_state.last_status = f"❌ {current_status} - La tarea no fue encontrada en el servidor después de múltiples intentos."
+                            break
                     else:
-                        # Still processing
+                        # Still processing - reset not_found_retries since we got a valid status
+                        not_found_retries = 3
                         status_box.info(f"⏳ {current_status.capitalize()}")
                         st.session_state.last_status = current_status.capitalize()
                         
                 except requests.exceptions.JSONDecodeError as e:
-                    st.error(f"🔍 Error de JSON: {str(e)}")
-                    st.error(f"🔍 Contenido de respuesta: {task_status_response.text if 'task_status_response' in locals() else 'No disponible'}")
                     if retry_attempts > 0:
                         retry_attempts -= 1
-                        st.info(f"🔄 Reintentando... ({retry_attempts} intentos restantes)")
                         time.sleep(3)  # Wait before retrying
                         continue
                     else:
