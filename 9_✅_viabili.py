@@ -185,42 +185,75 @@ if clicked:
 
     if response.status_code == 200:
         task_id = response.json().get("task_id")
-        status_box.info("📊 Procesando tarea...")
+        if not task_id:
+            status_box.error("❌ No se recibió un ID de tarea válido del servidor.")
+            st.session_state.last_status = "❌ No se recibió un ID de tarea válido del servidor."
+            st.stop()
+            
+        status_box.info(f"📊 Procesando tarea (ID: {task_id})...")
         with st.spinner("⏳ Procesando, por favor espera..."):
             retry_attempts = 5  # Number of retries for task status
             while True:
                 try:
                     task_status_response = requests.get(f"{CLOUD_RUN_URL}/task-status/{task_id}", headers=headers)
+                    
+                    # Debug: Show response status and content
+                    st.info(f"🔍 Estado de respuesta: {task_status_response.status_code}")
+                    
+                    if task_status_response.status_code != 200:
+                        status_box.error(f"❌ Error al consultar estado de tarea. Código HTTP: {task_status_response.status_code}")
+                        st.session_state.last_status = f"❌ Error al consultar estado de tarea. Código HTTP: {task_status_response.status_code}"
+                        break
+                    
                     task_status = task_status_response.json()
-                    current_status = task_status.get("status")
+                    current_status = task_status.get("status", "unknown")
+                    
+                    # Debug: Show full task status response
+                    st.info(f"🔍 Respuesta completa del estado: {task_status}")
+                    
                     if current_status.lower() == "completado":
-                        status_box.success("Tarea completada exitosamente.")
-                        st.session_state.last_status = "Tarea completada exitosamente."
+                        spreadsheet_url = task_status.get("spreadsheet_url")
+                        if not spreadsheet_url:
+                            status_box.error("❌ Tarea completada pero no se recibió URL de spreadsheet.")
+                            st.session_state.last_status = "❌ Tarea completada pero no se recibió URL de spreadsheet."
+                            break
+                            
+                        status_box.success("✅ Tarea completada exitosamente.")
+                        st.session_state.last_status = "✅ Tarea completada exitosamente."
                         st.session_state.iframe_shown = True
-                        st.session_state.spreadsheet_url = task_status.get("spreadsheet_url")
+                        st.session_state.spreadsheet_url = spreadsheet_url
                         components.html(
                             f"""
-                            <iframe src="{st.session_state.spreadsheet_url}?widget=true&amp;headers=false"
+                            <iframe src="{spreadsheet_url}?widget=true&amp;headers=false"
                                     width="100%" height="600" style="border:none;"></iframe>
                             """,
                             height=600,
                         )
                         # Add a link to open the Google Sheet in a new tab
                         st.markdown(
-                            f"[Ver más detalles en Sheets]({st.session_state.spreadsheet_url})",
+                            f"[Ver más detalles en Sheets]({spreadsheet_url})",
                             unsafe_allow_html=True
                         )
                         break
-                    elif current_status.startswith("error"):
-                        status_box.error(f"Tarea fallida: {current_status}")
-                        st.session_state.last_status = f"Tarea fallida: {current_status}"
+                    elif current_status.lower().startswith("error") or "error" in current_status.lower():
+                        status_box.error(f"❌ Tarea fallida: {current_status}")
+                        st.session_state.last_status = f"❌ Tarea fallida: {current_status}"
+                        break
+                    elif current_status.lower() == "no encontrado" or "no encontrado" in current_status.lower():
+                        status_box.error(f"❌ {current_status} - La tarea no fue encontrada en el servidor.")
+                        st.session_state.last_status = f"❌ {current_status} - La tarea no fue encontrada en el servidor."
                         break
                     else:
-                        status_box.info(current_status.capitalize())
+                        # Still processing
+                        status_box.info(f"⏳ {current_status.capitalize()}")
                         st.session_state.last_status = current_status.capitalize()
-                except requests.JSONDecodeError:
+                        
+                except requests.exceptions.JSONDecodeError as e:
+                    st.error(f"🔍 Error de JSON: {str(e)}")
+                    st.error(f"🔍 Contenido de respuesta: {task_status_response.text if 'task_status_response' in locals() else 'No disponible'}")
                     if retry_attempts > 0:
                         retry_attempts -= 1
+                        st.info(f"🔄 Reintentando... ({retry_attempts} intentos restantes)")
                         time.sleep(3)  # Wait before retrying
                         continue
                     else:
@@ -228,8 +261,8 @@ if clicked:
                         st.session_state.last_status = "❌ Error al decodificar la respuesta JSON después de varios intentos."
                         break
                 except requests.exceptions.RequestException as e:
-                    status_box.error(f"Error de red: {e}")
-                    st.session_state.last_status = f"Error de red: {e}"
+                    status_box.error(f"❌ Error de red: {e}")
+                    st.session_state.last_status = f"❌ Error de red: {e}"
                     break
                 time.sleep(3)
     else:
