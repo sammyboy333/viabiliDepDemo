@@ -7,8 +7,8 @@ from google.auth.transport.requests import Request
 import streamlit.components.v1 as components
 from datetime import datetime, timezone  # Import timezone for UTC-aware datetime
 import warnings  # Import warnings module
+import json
 
-GOOGLE_APPLICATION_CREDENTIALS = "templates/viabili-service-account.json"
 CLOUD_RUN_URL = "https://viabili3-1041704460502.us-central1.run.app"
 
 # Allow deprecation warnings
@@ -125,10 +125,30 @@ if clicked:
     status_box.empty()
     components.html("", height=0)
 
-    creds = service_account.IDTokenCredentials.from_service_account_file(
-        GOOGLE_APPLICATION_CREDENTIALS,
-        target_audience=CLOUD_RUN_URL
-    )
+    # Load Google service account credentials from Streamlit secrets
+    try:
+        # Try to load from Streamlit secrets (for deployment)
+        if "google_service_account" in st.secrets:
+            service_account_info = dict(st.secrets["google_service_account"])
+            creds = service_account.IDTokenCredentials.from_service_account_info(
+                service_account_info,
+                target_audience=CLOUD_RUN_URL
+            )
+        else:
+            # Fallback to local file (for local development)
+            local_credentials_path = "templates/viabili-service-account.json"
+            if os.path.exists(local_credentials_path):
+                creds = service_account.IDTokenCredentials.from_service_account_file(
+                    local_credentials_path,
+                    target_audience=CLOUD_RUN_URL
+                )
+            else:
+                st.error("❌ No se encontraron credenciales de Google Cloud. Configura los secretos en Streamlit Cloud.")
+                st.stop()
+    except Exception as e:
+        st.error(f"❌ Error al cargar las credenciales: {str(e)}")
+        st.stop()
+    
     # Refresh credentials to populate expiry
     creds.refresh(Request())
     # Ensure timezone-aware datetime is used

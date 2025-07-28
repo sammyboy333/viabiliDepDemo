@@ -18,6 +18,13 @@ lib/
 lib64/
 parts/
 sdist/
+
+# Streamlit secrets (DO NOT COMMIT)
+.streamlit/secrets.toml
+
+# Google Service Account credentials (DO NOT COMMIT)
+templates/viabili-service-account.json
+*.json
 var/
 wheels/
 share/python-wheels/
