@@ -1,12 +1,13 @@
 import streamlit as st
+from auth import require_auth, show_user_info, show_user_sidebar
 import requests
 import os
 import time
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 import streamlit.components.v1 as components
-from datetime import datetime, timezone  # Import timezone for UTC-aware datetime
-import warnings  # Import warnings module
+from datetime import datetime, timezone
+import warnings
 import json
 
 CLOUD_RUN_URL = "https://viabili3-1041704460502.us-central1.run.app"
@@ -14,13 +15,16 @@ CLOUD_RUN_URL = "https://viabili3-1041704460502.us-central1.run.app"
 # Allow deprecation warnings
 warnings.filterwarnings("default", category=DeprecationWarning)
 
-# Configure Streamlit page
+# Configure page
 st.set_page_config(
     layout='wide', 
     initial_sidebar_state='expanded',
     page_title='Viabili - Análisis RFQ',
     page_icon="https://cdn.prod.website-files.com/640617b2f45b42597a76b590/6679b53c57f0356096fe4b48_logo-footer.svg"
 )
+
+# Require authentication
+require_auth()
 
 # Apply basic styling
 st.markdown("""
@@ -34,43 +38,30 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.sidebar.title("Análisis RFQ")
+st.sidebar.title("Viabili ✅")
 
-# Option to toggle between ZIP upload and RFQ ID
-upload_mode = st.sidebar.radio(
-    "Selecciona el modo de carga:",
-    options=["Subir ZIP ordenado", "RFQ ID (deshabilitado)"],
-    index=0
+# Display instructions for ZIP upload
+st.sidebar.markdown(
+    """
+    **Instrucciones:**
+    1. Ordena tu carpeta en subcarpetas; una por cada Item (Ensamble o pieza).
+    2. Comprime tu carpeta a un archivo ZIP.
+
+    **Ejemplo de estructura:**
+    ```
+    📁 MiCarpeta  
+    ├── 📁 Item1  
+    │   ├── 📄 blueprint1.pdf  
+    │   ├── 📄 blueprint2.png  
+    ├── 📁 Item2  
+    │   ├── 📄 blueprint3.jpg  
+    │   ├── 📄 blueprint4.step  
+    ```
+    """
 )
-
-if upload_mode == "Subir ZIP ordenado":
-    # Display instructions for ZIP upload
-    st.sidebar.markdown(
-        """
-        **Instrucciones:**
-        1. Ordena tu carpeta en subcarpetas; una por cada Item (Ensamble o pieza).
-        2. Comprime tu carpeta a un archivo ZIP.
-
-        **Ejemplo de estructura:**
-        ```
-        📁 MiCarpeta  
-        ├── 📁 Item1  
-        │   ├── 📄 blueprint1.pdf  
-        │   ├── 📄 blueprint2.png  
-        ├── 📁 Item2  
-        │   ├── 📄 blueprint3.jpg  
-        │   ├── 📄 blueprint4.step  
-        ```
-        """
-    )
-    # ZIP upload option
-    uploaded_zip = st.sidebar.file_uploader("Subir ZIP ordenado", type=["zip"])
-    rfq_id = None  # Ensure RFQ ID is not set
-else:
-    # RFQ ID input (disabled)
-    st.sidebar.warning("⚠️ Esta funcionalidad está temporalmente deshabilitada.")
-    rfq_id = st.sidebar.text_input("ID de RFQ", value="", placeholder="Funcionalidad deshabilitada", disabled=True)
-    uploaded_zip = None  # Ensure ZIP upload is not set
+# ZIP upload option
+uploaded_zip = st.sidebar.file_uploader("Subir ZIP ordenado", type=["zip"])
+rfq_id = None  # Ensure RFQ ID is not set
 
 # Add link to Google Drive folder for previous reports
 st.sidebar.markdown(
@@ -80,7 +71,13 @@ st.sidebar.markdown(
 )
 
 # "Ejecutar" button
-clicked = st.sidebar.button("Ejecutar")
+clicked = st.sidebar.button("Ejecutar", key="ejecutar_button")
+
+# Show user info at bottom of sidebar
+show_user_sidebar()
+
+# Show user info and logout option (hide welcome if clicked)
+show_user_info(hide_welcome=clicked)
 
 # Initialize session state for persisting results
 if "last_status" not in st.session_state:
@@ -124,7 +121,7 @@ if clicked:
     st.session_state.spreadsheet_url = None
     status_box.empty()
     components.html("", height=0)
-
+    
     # Load Google service account credentials from Streamlit secrets
     try:
         # Try to load from Streamlit secrets (for deployment)
@@ -267,5 +264,4 @@ if clicked:
                 time.sleep(3)
     else:
         status_box.error(f"❌ Error al iniciar la tarea. Código HTTP: {response.status_code}")
-        st.session_state.last_status = f"❌ Error al iniciar la tarea. Código HTTP: {response.status_code}"
         st.session_state.last_status = f"❌ Error al iniciar la tarea. Código HTTP: {response.status_code}"
