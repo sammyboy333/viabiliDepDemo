@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import warnings
 import json
 
-CLOUD_RUN_URL = "https://viabili3-1041704460502.us-central1.run.app"
+CLOUD_RUN_URL = "https://viabili-api-1041704460502.us-central1.run.app"
 
 # Allow deprecation warnings
 warnings.filterwarnings("default", category=DeprecationWarning)
